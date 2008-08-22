@@ -10,14 +10,15 @@ IGNORED_TOPLEVELS = ("adobe", "flash", "fl", "mx")
 import_re = re.compile(r"import(?: )+((?:\w+\.)*)(\w+);")
 starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
 
+package_re = re.compile(r"package(?: )+ ((?\w+\.)*\w+)")
+as2class_re = re.compile(r"class(?: )+ ((?\w+\.)*\w+)")
+
 files = {}
+folders = []
+top = ""
 
 def process_all():
-    starts = sys.argv[1:]
-    if not starts:
-        starts = (".",)
-
-    for start in starts:
+    for start in (sys.argv[1:] or (".",)):
         if os.path.isfile(start) and start.endswith(".as"):
             process_actionscript(start)
         elif os.path.isdir(start):
@@ -33,40 +34,69 @@ def process_actionscript(location):
 
     files[location] = text
 
+    text = strip_multiline_comments(text)
+    text = strip_singleline_comments(text)
+
+    if not top:
+        find_top(location, text)
+
+    imports, starimports = [], []
+    for line in text.split():
+        match = import_re.search(line)
+        if match:
+            imports.append("".join(match.groups()))
+
+        match = starimport_re.search(line)
+        if match:
+            starimports.append(match.groups()[0][:-1])
+
+    for i in imports:
+        if i.split(".")[0] in IGNORED_TOPLEVELS: continue
+        process_actionscript(get_path(i) + ".as")
+
+    for i in starimports:
+        if i.split(".")[0] in IGNORED_TOPLEVELS: continue
+        process_folder(get_path(i))
+
+def process_folder(location):
+    if location in folders:
+        return
+    folders.append(location)
+
+    for i in [f for f in os.listdir(location) if f.endswith("as")]:
+        process_actionscript(i)
+
+def strip_singleline_comments(text):
+    results = []
+    for line in text.split():
+        start = line.find("//")
+        if start + 1: results.append(line[:start])
+        else: results.append(line)
+
+    return "\n".join(results)
+
+def strip_multiline_comments(text):
     while 1:
         start = text.find("/*")
         if start == -1: break
         end = ((text.find("*/", start) + 1) or (len(text) - 1)) + 1
+
         text = text[start:] + text[:end]
+    return text
 
-    imports, starimports = [], []
-    for line in text.split():
-        comment_start = line.find("//")
-        comment = comment_start != -1
+def find_top(asfileloc, asfiletext):
+    for line in asfiletext.split():
+        match = package_re.search(line)
+        if match:
+            package = "".join(match.groups())
+            break
 
-        match = import_re.search(line)
-        if match and (not comment or comment_start > match.end()):
-            imports.append("".join(match.groups()))
+    globals()["top"] =  os.sep.join(os.path.abspath(asfileloc)
+            .split(os.sep)[:-len(package.split(".")) - 1])
 
-        match = starimport_re.search(line)
-        if match and (not comment or comment_start > match.end()):
-            starimports.append(match.groups()[0][:-1])
-
-    for i in imports:
-        i = i.replace(".", os.sep) + ".as"
-        if i.split(os.sep, 1)[0] in IGNORED_TOPLEVELS or i in files:
-            continue
-        process_actionscript(i)
-
-    for i in starimports:
-        i = i.replace(".", os.sep)
-        if i.split(os.sep, 1)[0] in IGNORED_TOPLEVELS:
-            continue
-        process_folder(i)
-
-def process_folder(location):
-    for i in [f for f in os.listdir(location) if f.endswith("as")]:
-        process_actionscript(i)
+def get_path(dotpath):
+    slashpath = dotpath.replace(".", os.sep)
+    return os.sep.join(top, slashpath)
 
 
 if __name__ == "__main__":
