@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+from xml.dom import minidom
 import zipfile
 
 
@@ -26,6 +27,8 @@ def process_all():
             process_actionscript(start)
         elif os.path.isdir(start):
             process_folder(start)
+        elif os.path.isfile(start) and start.endswith(".flp"):
+            process_flp(start)
     zfile.close()
 
 def process_actionscript(location):
@@ -81,6 +84,23 @@ def process_folder(location):
 
     for i in [f for f in os.listdir(location) if f.endswith("as")]:
         process_actionscript(os.path.join(location, i))
+
+def process_flp(location):
+    try:
+        flp = minidom.parse(location)
+    except ExpatError:
+        return
+    except IOError:
+        return
+    recurse_xml(flp)
+
+def recurse_xml(node):
+    if node.nodeName == "project_file" and \
+            node.attributes["filetype"].value == "as":
+        process_actionscript(node.attributes["path"].value)
+    else:
+        for child in node.childNodes:
+            recurse_xml(child)
 
 def strip_singleline_comments(text):
     results = []
