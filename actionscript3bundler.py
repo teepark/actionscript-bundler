@@ -2,12 +2,15 @@
 
 import os
 import re
+import shutil
 import sys
+import tempfile
 from xml.dom import minidom
 import zipfile
 
 
 IGNORED_TOPLEVELS = ("adobe", "flash", "fl", "mx")
+ARCHIVE_NAME = "ASBundle.zip"
 
 import_re = re.compile(r"import(?: )+((?:\w+\.)*)(\w+);")
 starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
@@ -18,30 +21,19 @@ package_re = re.compile(r"package(?: )+((?:\w+\.)*\w+)")
 files = []
 folders = []
 top = ""
-zfile = None
-
-def process_all():
-    globals()["zfile"] = zipfile.ZipFile("ASBundle.zip", "w")
-    for start in (sys.argv[1:] or (".",)):
-        if os.path.isfile(start) and start.endswith(".as"):
-            process_actionscript(start)
-        elif os.path.isdir(start):
-            process_folder(start)
-        elif os.path.isfile(start) and start.endswith(".flp"):
-            process_flp(start)
-    zfile.close()
+tempdir = None
 
 def process_actionscript(location):
     if location in files:
         return
 
     f = open(location, "r")
-    rawtext = f.read()
+    text = f.read()
     f.close()
 
     files.append(location)
 
-    text = strip_multiline_comments(rawtext)
+    text = strip_multiline_comments(text)
     text = strip_singleline_comments(text)
 
     for line in text.splitlines():
@@ -51,10 +43,13 @@ def process_actionscript(location):
             break
     else:
         raise Exception("no package statement in AS file '" + location + "'")
-    compath = "%s/%s" % (os.sep.join(package.split(".")),
-                            os.path.basename(location))
+    compath = os.sep.join(package.split(".") +
+            [os.path.basename(location)])
 
-    zfile.writestr(compath, rawtext)
+    destination = tempdir + os.sep + compath
+    if not os.path.isdir(os.path.dirname(destination)):
+        os.makedirs(os.path.dirname(destination))
+    shutil.copyfile(location, destination)
 
     if not top:
         find_top(location, text)
@@ -134,11 +129,25 @@ def get_path(dotpath):
     slashpath = dotpath.replace(".", os.sep)
     return os.sep.join((top, slashpath))
 
-def build_zipfile():
-    zfile = zipfile.ZipFile("ASBundle.zip", "w")
-    for name, contents in files:
-        zfile.writestr(name, contents)
+def main():
+    globals()["tempdir"] = tempfile.mkdtemp()
+    for start in (sys.argv[1:] or (".",)):
+        if os.path.isfile(start) and start.endswith(".as"):
+            process_actionscript(start)
+        elif os.path.isfile(start) and start.endswith(".flp"):
+            process_flp(start)
+        elif os.path.isdir(start):
+            process_folder(start)
+
+    zfile = zipfile.ZipFile(ARCHIVE_NAME, 'w')
+    for root, dirs, files in os.walk(tempdir):
+        for filename in files:
+            source = os.path.join(root, filename)
+            destination = os.path.join(root[len(tempdir):], filename)
+            zfile.write(source, destination, zipfile.ZIP_STORED)
+    shutil.rmtree(tempdir)
+    zfile.close()
 
 
 if __name__ == "__main__":
-    process_all()
+    main()
