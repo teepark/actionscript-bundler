@@ -188,8 +188,11 @@ def main(options, args):
         elif os.path.isdir(start):
             process_folder(start)
 
+    output = options.output_location
     if options.output_format == "zip":
-        zfile = zipfile.ZipFile(options.output_location, 'w')
+        if not output.endswith(".zip"):
+            output += ".zip"
+        zfile = zipfile.ZipFile(output, 'w')
         for root, dirs, files in os.walk(tempdir):
             for filename in files:
                 source = os.path.join(root, filename)
@@ -197,8 +200,8 @@ def main(options, args):
                 zfile.write(source, destination, zipfile.ZIP_STORED)
         shutil.rmtree(tempdir)
         zfile.close()
-    elif options.output_format == "folder":
-        shutil.copytree(tempdir, options.output_location)
+    elif output == "folder":
+        shutil.copytree(tempdir, output)
 
 
 if __name__ == "__main__":
