@@ -81,7 +81,8 @@ def process_actionscript(location):
 
     for i in imports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
-        process_actionscript(get_path(i) + ".as")
+        path = os.sep.join(get_path(i).split(os.sep)[:-1])
+        process_folder(path)
 
     for i in starimports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
@@ -182,7 +183,7 @@ def main(options, args):
     globals()["tempdir"] = tempfile.mkdtemp()
     for start in (args or (".",)):
         if os.path.isfile(start) and start.endswith(".as"):
-            process_actionscript(start)
+            process_folder(os.path.dirname(start))
         elif os.path.isfile(start) and start.endswith(".flp"):
             process_flp(start)
         elif os.path.isdir(start):
