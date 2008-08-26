@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 
+import optparse
 import os
 import re
 import shutil
-import sys
 import tempfile
 from xml.dom import minidom
 import zipfile
 
 
 IGNORED_TOPLEVELS = ("adobe", "flash", "fl", "mx")
-ARCHIVE_NAME = "ASBundle.zip"
 
 import_re = re.compile(r"import(?: )+((?:\w+\.)*)(\w+);")
 starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
@@ -129,9 +128,20 @@ def get_path(dotpath):
     slashpath = dotpath.replace(".", os.sep)
     return os.sep.join((top, slashpath))
 
-def main():
+def parse_options():
+    parser = optparse.OptionParser()
+    parser.set_defaults(output_location="ASBundle", output_format="zip")
+
+    parser.add_option("-o", "--output-location",
+            help="location to store the bundle")
+    parser.add_option("-f", "--output-format", choices=("zip", "folder", "none"),
+            help="type of bundle to create ('zip', 'folder', or 'none')")
+
+    return parser.parse_args()
+
+def main(options, args):
     globals()["tempdir"] = tempfile.mkdtemp()
-    for start in (sys.argv[1:] or (".",)):
+    for start in (args or (".",)):
         if os.path.isfile(start) and start.endswith(".as"):
             process_actionscript(start)
         elif os.path.isfile(start) and start.endswith(".flp"):
@@ -139,15 +149,18 @@ def main():
         elif os.path.isdir(start):
             process_folder(start)
 
-    zfile = zipfile.ZipFile(ARCHIVE_NAME, 'w')
-    for root, dirs, files in os.walk(tempdir):
-        for filename in files:
-            source = os.path.join(root, filename)
-            destination = os.path.join(root[len(tempdir):], filename)
-            zfile.write(source, destination, zipfile.ZIP_STORED)
-    shutil.rmtree(tempdir)
-    zfile.close()
+    if options.output_format == "zip":
+        zfile = zipfile.ZipFile(options.output_location, 'w')
+        for root, dirs, files in os.walk(tempdir):
+            for filename in files:
+                source = os.path.join(root, filename)
+                destination = os.path.join(root[len(tempdir):], filename)
+                zfile.write(source, destination, zipfile.ZIP_STORED)
+        shutil.rmtree(tempdir)
+        zfile.close()
+    elif options.output_format == "folder":
+        shutil.copytree(tempdir, options.output_location)
 
 
 if __name__ == "__main__":
-    main()
+    main(*parse_options())
