@@ -11,7 +11,7 @@ from xml.dom import minidom
 import zipfile
 
 
-IGNORED_TOPLEVELS = ("adobe", "flash", "fl", "mx")
+IGNORED_TOPLEVELS = ["adobe", "flash", "fl", "mx"]
 
 import_re = re.compile(r"import(?: )+((?:\w+\.)*)(\w+);")
 starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
@@ -156,8 +156,13 @@ def parse_options():
 
     parser.add_option("-o", "--output-location",
             help="location to store the bundle")
-    parser.add_option("-f", "--output-format", choices=("zip", "folder", "none"),
+    parser.add_option("-f", "--output-format",
+            choices=("zip", "folder", "none"),
             help="type of bundle to create ('zip', 'folder', or 'none')")
+    parser.add_option("-i", "--ignore", action="append",
+            help="ignore this top-level package (you may add this option more" +
+                " than once. (%s) are already ignored)" %
+                    ", ".join("'%s'" % a for a in IGNORED_TOPLEVELS))
     parser.add_option("-v", "--verbose", action="store_true",
             help="print information about what's going on")
 
@@ -165,6 +170,9 @@ def parse_options():
 
     if options.verbose:
         logger.setLevel(logging.INFO)
+
+    for ignored in options.ignore:
+        IGNORED_TOPLEVELS.append(ignored)
 
     return options, args
 
