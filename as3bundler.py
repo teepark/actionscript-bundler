@@ -31,18 +31,27 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 logger.setLevel(logging.CRITICAL)
 
 def process_actionscript(location):
+    "include an actionscript file and look for imports to include"
     if location in files:
+        # then we've done this one before
         return
+
+    # remember this file so we won't process it again
+    files.append(location)
 
     logger.info("processing file %s", location)
 
+    # read the file
     f = open(location, "r")
     text = f.read()
     f.close()
 
+    # pull all comments out before searching for package and imports
     text = strip_multiline_comments(text)
     text = strip_singleline_comments(text)
 
+    # find the package statement, use that to figure out the
+    # location of the whole classpath
     for line in text.splitlines():
         match = package_re.search(line)
         if match:
@@ -51,20 +60,22 @@ def process_actionscript(location):
     else:
         raise Exception("no package statement in AS file '" + location + "'")
 
+    # if we are intentionally ignoring this package, quit processing now
     if package.split(".", 1)[0] in IGNORED_TOPLEVELS:
         return
 
-    files.append(location)
-
+    # copy the file to a directory in /temp
     destination = os.sep.join([tempdir] + package.split(".") +
                               [os.path.basename(location)])
     if not os.path.isdir(os.path.dirname(destination)):
         os.makedirs(os.path.dirname(destination))
     shutil.copyfile(location, destination)
 
+    # store the location of the classpath for the future
     if not top:
         find_top(location, text)
 
+    # line by line, look for imports
     imports, starimports = [], []
     for line in text.splitlines():
         match = import_re.search(line)
@@ -79,6 +90,7 @@ def process_actionscript(location):
             starimports.append(imp)
             logger.info("found import '%s.*' in file %s", imp, location)
 
+    # recurse into each import found
     for i in imports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
         path = os.sep.join(get_path(i).split(os.sep)[:-1])
@@ -89,6 +101,7 @@ def process_actionscript(location):
         process_folder(get_path(i))
 
 def process_folder(location):
+    "run process_actionscript on every .as file in the given folder"
     if location in folders:
         return
 
@@ -99,6 +112,7 @@ def process_folder(location):
         process_actionscript(os.path.join(location, i))
 
 def process_flp(location):
+    "run process_actionscript on every .as file in the given .flp file"
     logger.info("processing flash project file %s", location)
     try:
         flp = minidom.parse(location)
@@ -111,6 +125,7 @@ def process_flp(location):
     recurse_xml(flp)
 
 def recurse_xml(node):
+    "recurse into childnodes in a .flp file"
     if node.nodeName == "project_file" and \
             node.attributes["filetype"].value == "as":
         path = node.attributes["path"].value
@@ -121,6 +136,7 @@ def recurse_xml(node):
             recurse_xml(child)
 
 def strip_singleline_comments(text):
+    "pull out '//' comments"
     results = []
     for line in text.splitlines():
         start = line.find("//")
@@ -130,6 +146,7 @@ def strip_singleline_comments(text):
     return "\n".join(results)
 
 def strip_multiline_comments(text):
+    "pull out /* ... */ comments"
     while 1:
         start = text.find("/*")
         if start == -1: break
@@ -139,6 +156,8 @@ def strip_multiline_comments(text):
     return text
 
 def find_top(asfileloc, asfiletext):
+    """use a 'package' statement and the location of the file in
+    to calculate the classpath"""
     for line in asfiletext.splitlines():
         match = package_re.search(line)
         if match:
@@ -149,10 +168,12 @@ def find_top(asfileloc, asfiletext):
             .split(os.sep)[:-len(package.split(".")) - 1])
 
 def get_path(dotpath):
+    "translate a '.'-based path into a filesystem path, given the classpath"
     slashpath = dotpath.replace(".", os.sep)
     return os.sep.join((top, slashpath))
 
 def parse_options():
+    "use optparse to determine command-line options and arguments"
     parser = optparse.OptionParser()
     parser.set_defaults(output_location="ASBundle", output_format="zip",
                         verbose=False)
@@ -181,6 +202,8 @@ def parse_options():
 
 def main(options, args):
     globals()["tempdir"] = tempfile.mkdtemp()
+
+    # use all the provided start points to build up the temp dir
     for start in (args or (".",)):
         if os.path.isfile(start) and start.endswith(".as"):
             process_folder(os.path.dirname(start))
@@ -189,6 +212,7 @@ def main(options, args):
         elif os.path.isdir(start):
             process_folder(start)
 
+    # copy everything in the temp dir into the new bundle
     output = options.output_location
     if options.output_format == "zip":
         if not output.endswith(".zip"):
@@ -199,10 +223,12 @@ def main(options, args):
                 source = os.path.join(root, filename)
                 destination = os.path.join(root[len(tempdir):], filename)
                 zfile.write(source, destination, zipfile.ZIP_STORED)
-        shutil.rmtree(tempdir)
         zfile.close()
     elif output == "folder":
         shutil.copytree(tempdir, output)
+
+    # clean up the tempdir
+    shutil.rmtree(tempdir)
 
 
 if __name__ == "__main__":
