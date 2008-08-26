@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+import logging
 import optparse
 import os
 import re
 import shutil
+import sys
 import tempfile
 from xml.dom import minidom
 import zipfile
@@ -22,9 +24,17 @@ folders = []
 top = ""
 tempdir = None
 
+logger = logging.getLogger("as3bundler")
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter())
+logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.setLevel(logging.CRITICAL)
+
 def process_actionscript(location):
     if location in files:
         return
+
+    logger.info("processing file %s", location)
 
     f = open(location, "r")
     text = f.read()
@@ -57,11 +67,15 @@ def process_actionscript(location):
     for line in text.splitlines():
         match = import_re.search(line)
         if match:
-            imports.append("".join(match.groups()))
+            imp = "".join(match.groups())
+            imports.append(imp)
+            logger.info("found import '%s' in file %s", imp, location)
 
         match = starimport_re.search(line)
         if match:
-            starimports.append(match.groups()[0][:-1])
+            imp = match.groups()[0][:-1]
+            starimports.append(imp)
+            logger.info("found import '%s.*' in file %s", imp, location)
 
     for i in imports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
@@ -74,24 +88,31 @@ def process_actionscript(location):
 def process_folder(location):
     if location in folders:
         return
+
+    logger.info("processing folder %s", location)
     folders.append(location)
 
     for i in [f for f in os.listdir(location) if f.endswith("as")]:
         process_actionscript(os.path.join(location, i))
 
 def process_flp(location):
+    logger.info("processing flash project file %s", location)
     try:
         flp = minidom.parse(location)
     except ExpatError:
+        logger.error("error parsing flp file %s", location)
         return
     except IOError:
+        logger.error("error reading flp file %s", location)
         return
     recurse_xml(flp)
 
 def recurse_xml(node):
     if node.nodeName == "project_file" and \
             node.attributes["filetype"].value == "as":
-        process_actionscript(node.attributes["path"].value)
+        path = node.attributes["path"].value
+        logger.info("found project file %s in flp file", path)
+        process_actionscript(path)
     else:
         for child in node.childNodes:
             recurse_xml(child)
@@ -130,14 +151,22 @@ def get_path(dotpath):
 
 def parse_options():
     parser = optparse.OptionParser()
-    parser.set_defaults(output_location="ASBundle", output_format="zip")
+    parser.set_defaults(output_location="ASBundle", output_format="zip",
+                        verbose=False)
 
     parser.add_option("-o", "--output-location",
             help="location to store the bundle")
     parser.add_option("-f", "--output-format", choices=("zip", "folder", "none"),
             help="type of bundle to create ('zip', 'folder', or 'none')")
+    parser.add_option("-v", "--verbose", action="store_true",
+            help="print information about what's going on")
 
-    return parser.parse_args()
+    options, args = parser.parse_args()
+
+    if options.verbose:
+        logger.setLevel(logging.INFO)
+
+    return options, args
 
 def main(options, args):
     globals()["tempdir"] = tempfile.mkdtemp()
