@@ -224,7 +224,7 @@ def main(options, args):
                 destination = os.path.join(root[len(tempdir):], filename)
                 zfile.write(source, destination, zipfile.ZIP_STORED)
         zfile.close()
-    elif output == "folder":
+    elif options.output_format == "folder":
         shutil.copytree(tempdir, output)
 
     # clean up the tempdir
