@@ -40,8 +40,6 @@ def process_actionscript(location):
     text = f.read()
     f.close()
 
-    files.append(location)
-
     text = strip_multiline_comments(text)
     text = strip_singleline_comments(text)
 
@@ -52,10 +50,14 @@ def process_actionscript(location):
             break
     else:
         raise Exception("no package statement in AS file '" + location + "'")
-    compath = os.sep.join(package.split(".") +
-            [os.path.basename(location)])
 
-    destination = tempdir + os.sep + compath
+    if package.split(".", 1)[0] in IGNORED_TOPLEVELS:
+        return
+
+    files.append(location)
+
+    destination = os.sep.join([tempdir] + package.split(".") +
+                              [os.path.basename(location)])
     if not os.path.isdir(os.path.dirname(destination)):
         os.makedirs(os.path.dirname(destination))
     shutil.copyfile(location, destination)
@@ -171,7 +173,7 @@ def parse_options():
     if options.verbose:
         logger.setLevel(logging.INFO)
 
-    for ignored in options.ignore:
+    for ignored in (options.ignore or ()):
         IGNORED_TOPLEVELS.append(ignored)
 
     return options, args
