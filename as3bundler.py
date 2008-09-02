@@ -221,32 +221,33 @@ def parse_options():
 def main(options, args):
     globals()["tempdir"] = tempfile.mkdtemp()
 
-    # use all the provided start points to build up the temp dir
-    for start in (args or (".",)):
-        if os.path.isfile(start) and start.endswith(".as"):
-            process_folder(os.path.dirname(start))
-        elif os.path.isfile(start) and start.endswith(".flp"):
-            process_flp(start)
-        elif os.path.isdir(start):
-            process_folder(start)
+    try:
+        # use all the provided start points to build up the temp dir
+        for start in (args or (".",)):
+            if os.path.isfile(start) and start.endswith(".as"):
+                process_folder(os.path.dirname(start))
+            elif os.path.isfile(start) and start.endswith(".flp"):
+                process_flp(start)
+            elif os.path.isdir(start):
+                process_folder(start)
 
-    # copy everything in the temp dir into the new bundle
-    output = options.output_location
-    if options.output_format == "zip":
-        if not output.endswith(".zip"):
-            output += ".zip"
-        zfile = zipfile.ZipFile(output, 'w')
-        for root, dirs, files in os.walk(tempdir):
-            for filename in files:
-                source = os.path.join(root, filename)
-                destination = os.path.join(root[len(tempdir):], filename)
-                zfile.write(source, destination, zipfile.ZIP_STORED)
-        zfile.close()
-    elif options.output_format == "folder":
-        shutil.copytree(tempdir, output)
-
-    # clean up the tempdir
-    shutil.rmtree(tempdir)
+        # copy everything in the temp dir into the new bundle
+        output = options.output_location
+        if options.output_format == "zip":
+            if not output.endswith(".zip"):
+                output += ".zip"
+            zfile = zipfile.ZipFile(output, 'w')
+            for root, dirs, files in os.walk(tempdir):
+                for filename in files:
+                    source = os.path.join(root, filename)
+                    destination = os.path.join(root[len(tempdir):], filename)
+                    zfile.write(source, destination, zipfile.ZIP_STORED)
+            zfile.close()
+        elif options.output_format == "folder":
+            shutil.copytree(tempdir, output)
+    finally:
+        # clean up the tempdir
+        shutil.rmtree(tempdir)
 
 
 if __name__ == "__main__":
