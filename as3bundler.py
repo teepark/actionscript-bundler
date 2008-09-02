@@ -19,9 +19,10 @@ starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
 package_re = re.compile(r"package(?: )+((?:\w+\.)*\w+)")
 #as2class_re = re.compile(r"class(?: )+((?:\w+\.)*\w+)")
 
+classpaths = []
+searched_classpaths = []
 files = []
 folders = []
-top = ""
 tempdir = None
 
 logger = logging.getLogger("as3bundler")
@@ -71,9 +72,9 @@ def process_actionscript(location):
         os.makedirs(os.path.dirname(destination))
     shutil.copyfile(location, destination)
 
-    # store the location of the classpath for the future
-    if not top:
-        find_top(location, text)
+    # if we don't have any classpaths, find the one this file belogs to
+    if location not in searched_classpaths:
+        find_classpath(location, text)
 
     # line by line, look for imports
     imports, starimports = [], []
@@ -93,8 +94,7 @@ def process_actionscript(location):
     # recurse into each import found
     for i in imports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
-        path = os.sep.join(get_path(i).split(os.sep)[:-1])
-        process_folder(path)
+        process_folder(os.sep.join(get_path(i).split(os.sep)[:-1]))
 
     for i in starimports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
@@ -108,7 +108,8 @@ def process_folder(location):
     logger.info("processing folder %s", location)
     folders.append(location)
 
-    for i in [f for f in os.listdir(location) if f.endswith("as")]:
+    for i in [f for f in os.listdir(os.path.abspath(location))
+            if f.endswith(".as")]:
         process_actionscript(os.path.join(location, i))
 
 def process_flp(location):
@@ -155,8 +156,8 @@ def strip_multiline_comments(text):
         text = text[:start] + text[end:]
     return text
 
-def find_top(asfileloc, asfiletext):
-    """use a 'package' statement and the location of the file in
+def find_classpath(asfileloc, asfiletext):
+    """use a 'package' statement and the location of the file
     to calculate the classpath"""
     for line in asfiletext.splitlines():
         match = package_re.search(line)
@@ -164,13 +165,23 @@ def find_top(asfileloc, asfiletext):
             package = "".join(match.groups())
             break
 
-    globals()["top"] =  os.sep.join(os.path.abspath(asfileloc)
-            .split(os.sep)[:-len(package.split(".")) - 1])
+    path = os.sep.join(os.path.abspath(asfileloc).split(os.sep)[:-len(
+            package.split(".")) - 1])
+
+    if path not in classpaths:
+        classpaths.append(path)
+
+    searched_classpaths.append(asfileloc)
 
 def get_path(dotpath):
-    "translate a '.'-based path into a filesystem path, given the classpath"
+    "translate a '.'-based path into a filesystem path"
     slashpath = dotpath.replace(".", os.sep)
-    return os.sep.join((top, slashpath))
+    for classpath in classpaths:
+        filepath = os.sep.join((classpath, slashpath))
+        if os.path.isfile(filepath) or os.path.isdir(filepath):
+            return filepath
+    raise Exception(("An AS file corresponding to '%s' can't be found. " +
+            "Did you forget to specify an extra classpath?") % slashpath)
 
 def parse_options():
     "use optparse to determine command-line options and arguments"
@@ -189,6 +200,10 @@ def parse_options():
                     ", ".join("'%s'" % a for a in IGNORED_TOPLEVELS))
     parser.add_option("-v", "--verbose", action="store_true",
             help="print information about what's going on")
+    parser.add_option("-p", "--class-path", action="append",
+            help="search the provided class-path in addition to the one " +
+                "containing the starting point(s) (you may add this option " +
+                "more than once)")
 
     options, args = parser.parse_args()
 
@@ -197,6 +212,9 @@ def parse_options():
 
     for ignored in (options.ignore or ()):
         IGNORED_TOPLEVELS.append(ignored)
+
+    for path in (options.class_path or ()):
+        classpaths.append(path)
 
     return options, args
 
