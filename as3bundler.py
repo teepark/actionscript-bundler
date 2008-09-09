@@ -13,11 +13,11 @@ import zipfile
 
 IGNORED_TOPLEVELS = ["adobe", "flash", "fl", "mx"]
 
-import_re = re.compile(r"import\s+((?:\w+\.)*)(\w+);")
-starimport_re = re.compile(r"import\s+((?:\w+\.)*)\*;")
+import_re = re.compile(r"import(?: )+((?:\w+\.)*)(\w+);")
+starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
 
-package_re = re.compile(r"package\s+((?:\w+\.)*\w+)")
-include_re = re.compile("include\\s+['\"](.*?)['\"]")
+package_re = re.compile(r"package(?: )+((?:\w+\.)*\w+)")
+#as2class_re = re.compile(r"class(?: )+((?:\w+\.)*\w+)")
 
 classpaths = []
 searched_classpaths = []
@@ -31,7 +31,7 @@ handler.setFormatter(logging.Formatter())
 logger.addHandler(logging.StreamHandler(sys.stdout))
 logger.setLevel(logging.CRITICAL)
 
-def process_actionscript(location, from_include=False, path=None):
+def process_actionscript(location):
     "include an actionscript file and look for imports to include"
     if location in files:
         # then we've done this one before
@@ -51,37 +51,33 @@ def process_actionscript(location, from_include=False, path=None):
     text = strip_multiline_comments(text)
     text = strip_singleline_comments(text)
 
-    if not from_include:
-        # find the package statement, use that to figure out the
-        # location of the whole classpath
-        for line in text.splitlines():
-            match = package_re.search(line)
-            if match:
-                package = "".join(match.groups())
-                break
-        else:
-            raise Exception("no package statement in AS file '" + location + "'")
-
-        # if we are intentionally ignoring this package, quit processing now
-        if package.split(".", 1)[0] in IGNORED_TOPLEVELS:
-            return
-
-    if from_include:
-        destination = os.path.join(tempdir, path)
+    # find the package statement, use that to figure out the
+    # location of the whole classpath
+    for line in text.splitlines():
+        match = package_re.search(line)
+        if match:
+            package = "".join(match.groups())
+            break
     else:
-        # copy the file to a directory in /temp
-        destination = os.sep.join([tempdir] + package.split(".") +
-                                  [os.path.basename(location)])
+        raise Exception("no package statement in AS file '" + location + "'")
+
+    # if we are intentionally ignoring this package, quit processing now
+    if package.split(".", 1)[0] in IGNORED_TOPLEVELS:
+        return
+
+    # copy the file to a directory in /temp
+    destination = os.sep.join([tempdir] + package.split(".") +
+                              [os.path.basename(location)])
     if not os.path.isdir(os.path.dirname(destination)):
         os.makedirs(os.path.dirname(destination))
     shutil.copyfile(location, destination)
 
     # if we don't have any classpaths, find the one this file belogs to
-    if not from_include and location not in searched_classpaths:
+    if location not in searched_classpaths:
         find_classpath(location, text)
 
     # line by line, look for imports
-    imports, starimports, includeimports = [], [], []
+    imports, starimports = [], []
     for line in text.splitlines():
         match = import_re.search(line)
         if match:
@@ -95,13 +91,6 @@ def process_actionscript(location, from_include=False, path=None):
             starimports.append(imp)
             logger.info("found import '%s.*' in file %s", imp, location)
 
-        match = include_re.search(line)
-        if match:
-            imp = match.groups()[0]
-            includeimports.append(os.path.join(os.path.dirname(location), imp),
-                                  imp)
-            logger.info("found include '%s' in file %s", imp, location)
-
     # recurse into each import found
     for i in imports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
@@ -110,9 +99,6 @@ def process_actionscript(location, from_include=False, path=None):
     for i in starimports:
         if i.split(".")[0] in IGNORED_TOPLEVELS: continue
         process_folder(get_path(i))
-
-    for loc, path in includeimports:
-        process_actionscript(loc, True, path)
 
 def process_folder(location):
     "run process_actionscript on every .as file in the given folder"
