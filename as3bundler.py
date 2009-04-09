@@ -11,7 +11,7 @@ from xml.dom import minidom
 import zipfile
 
 
-IGNORED_TOPLEVELS = ["adobe", "flash", "fl", "mx"]
+IGNORED_TOPLEVELS = set(("adobe", "flash", "fl", "mx"))
 
 import_re = re.compile(r"import(?: )+((?:\w+\.)*)(\w+);")
 starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
@@ -19,10 +19,10 @@ starimport_re = re.compile(r"import(?: )+((?:\w+\.)*)\*;")
 package_re = re.compile(r"package(?: )+((?:\w+\.)*\w+)")
 #as2class_re = re.compile(r"class(?: )+((?:\w+\.)*\w+)")
 
-classpaths = []
-searched_classpaths = []
-files = []
-folders = []
+classpaths = set()
+searched_classpaths = set()
+files = set()
+folders = set()
 tempdir = None
 
 logger = logging.getLogger("as3bundler")
@@ -38,7 +38,7 @@ def process_actionscript(location):
         return
 
     # remember this file so we won't process it again
-    files.append(location)
+    files.add(location)
 
     logger.info("processing file %s", location)
 
@@ -77,18 +77,18 @@ def process_actionscript(location):
         find_classpath(location, text)
 
     # line by line, look for imports
-    imports, starimports = [], []
+    imports, starimports = set(), set()
     for line in text.splitlines():
         match = import_re.search(line)
         if match:
             imp = "".join(match.groups())
-            imports.append(imp)
+            imports.add(imp)
             logger.info("found import '%s' in file %s", imp, location)
 
         match = starimport_re.search(line)
         if match:
             imp = match.groups()[0][:-1]
-            starimports.append(imp)
+            starimports.add(imp)
             logger.info("found import '%s.*' in file %s", imp, location)
 
     # recurse into each import found
@@ -106,7 +106,7 @@ def process_folder(location):
         return
 
     logger.info("processing folder %s", location)
-    folders.append(location)
+    folders.add(location)
 
     for i in [f for f in os.listdir(os.path.abspath(location))
             if f.endswith(".as")]:
@@ -168,10 +168,9 @@ def find_classpath(asfileloc, asfiletext):
     path = os.sep.join(os.path.abspath(asfileloc).split(os.sep)[:-len(
             package.split(".")) - 1])
 
-    if path not in classpaths:
-        classpaths.append(path)
+    classpaths.add(path)
 
-    searched_classpaths.append(asfileloc)
+    searched_classpaths.add(asfileloc)
 
 def get_path(dotpath):
     "translate a '.'-based path into a filesystem path"
@@ -211,10 +210,10 @@ def parse_options():
         logger.setLevel(logging.INFO)
 
     for ignored in (options.ignore or ()):
-        IGNORED_TOPLEVELS.append(ignored)
+        IGNORED_TOPLEVELS.add(ignored)
 
     for path in (options.class_path or ()):
-        classpaths.append(path)
+        classpaths.add(path)
 
     return options, args
 
