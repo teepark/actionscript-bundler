@@ -1,0 +1,8 @@
+# standards
+*.pyc
+.*.swp
+
+# paver/distutils droppings
+actionscript_bundler.egg-info/*
+build/*
+dist/*
